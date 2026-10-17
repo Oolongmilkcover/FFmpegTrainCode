@@ -3,28 +3,19 @@
 #
 #  教学工程：读本地裸 PCM → AAC 编码（含 ADTS 头）
 #  学习重点在 main.cpp 的注释（按「【知识点 N】」编号）。
-#
-#  本文件与同目录的 08-01-encode_audio.pro 等价，二者任选其一：
-#    * CMake：Qt Creator 的 CMake kit / 命令行 cmake，推荐（现代 Qt 6 工程标配）
-#    * qmake：老工程习惯，.pro 里写的是同一套 FFmpeg 路径
+#  配套系统讲解：同目录《音频编码知识点详解.md》。
 #
 #  FFmpeg 路径与依赖收集方式直接沿用了同一套 Qt6 播放器工程
-#  （D:\QtProject\QtFFmpegPlayer\Player\QtPlayer\CMakeLists.txt）的做法：
+#  （QtFFmpegPlayer/Player/QtPlayer/CMakeLists.txt）的做法：
 #     - FFMPEG_PATH 作为 CACHE PATH，可在命令行 -DFFMPEG_PATH=... 覆盖
 #     - 用一个 INTERFACE 目标 ffmpeg_deps 统一封装 "头文件路径 + 库"
 #     - WIN32 走 find_library，其它平台走 pkg-config
 #  这样后续新增 target 时只要 target_link_libraries(xxx PRIVATE ffmpeg_deps)，
 #  不会出现 "忘了加 include 目录 → 找不到 libavcodec/avcodec.h" 的问题。
 #
-#  说明：原先放在本目录的 CMakeLists.txt 是播放器工程（QtPlayer）的副本，
-#        里面引用的 player.cpp / pusher/main.cpp 等文件在本目录并不存在，
-#        因此无法配置。原文件已备份为
-#        CMakeLists.txt.stale-from-QtFFmpegPlayer.bak 供对照。
-#
-#  源码语言：C++17（main.cpp）。原始版本是 C（main.c），
-#  已备份为 main.c.legacy-c-version.bak 供对照。
-#  现在 08-01（音频编码）/ 08-02（视频编码）/ 08-03（封装）三个工程
-#  统一用同一套 C++ 风格，便于直接迁进 pusher。
+#  源码语言：C++17（main.cpp）。
+#  08-01（音频编码）/ 08-02（视频编码）/ 08-03（封装）三个工程
+#  统一用同一套 C++ 风格 + 同一套 CMake 配置，便于直接迁进 pusher。
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.16)

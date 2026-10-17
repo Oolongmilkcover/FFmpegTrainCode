@@ -47,16 +47,17 @@ build/
 构建与运行
 =======================================================================
 
-CMake（推荐）：
+CMake：
     cmake -S . -B build -G "MinGW Makefiles" ^
           -DCMAKE_C_COMPILER=C:/Qt/Tools/mingw1310_64/bin/gcc.exe ^
+          -DCMAKE_CXX_COMPILER=C:/Qt/Tools/mingw1310_64/bin/g++.exe ^
           -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/mingw1310_64/bin/mingw32-make.exe
     cmake --build build
     build\encode_audio.exe 48000_2_f32le.pcm out.aac
 
-qmake（备选）：
-    "C:\Qt\6.11.0\mingw_64\bin\qmake.exe" 08-01-encode_audio.pro
-    "C:\Qt\Tools\mingw1310_64\bin\mingw32-make.exe"
-    # release\ 下没有 DLL，需要先把 ffmpeg8.1\bin 加进 PATH
+FFmpeg 路径默认 C:/Program Files/ffmpeg/ffmpeg8.1，
+可用 -DFFMPEG_PATH=<你的路径> 覆盖。
 
-两种方式产出的 .aac 文件经 MD5 比对完全一致。
+build/ 下会自动拷入 7 个 FFmpeg DLL（POST_BUILD），所以运行不需要改 PATH。
+
+源码语言为 C++17（main.cpp），仓库只保留 C++ 实现 + CMake 配置。

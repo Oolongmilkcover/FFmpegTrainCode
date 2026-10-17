@@ -33,29 +33,30 @@ FFmpeg 音视频编码 / 封装的**渐进式学习代码**，面向「采集 �
 
 ```
 FFmpegTrainCode/
+├── README.md                    本文件
 ├── 音频编码知识点详解.md          ← 08-01 的配套系统讲解
 ├── 视频编码与封装知识点详解.md     ← 08-02 / 08-03 的配套系统讲解
 │
 ├── 08-01-encode_audio/           音频编码：裸 PCM → AAC
 │   ├── main.cpp                  ★ 学习重点（知识点 1~28）
-│   ├── main.c.legacy-c-version.bak  原始 C 版本，供对照
-│   ├── CMakeLists.txt  *.pro
+│   ├── CMakeLists.txt            构建配置
 │   ├── 音频编码知识点详解.md
 │   ├── 说明.txt
 │   └── 48000_2_f32le.pcm / 48000_2_s16le.pcm / buweishui.aac   ← 测试素材
 │
 ├── 08-02-encode_video/           视频编码：裸 YUV → H.264
 │   ├── main.cpp                  ★ 学习重点（知识点 1~23）
-│   ├── main.c.legacy-c-version.bak
-│   ├── CMakeLists.txt  *.pro
+│   ├── CMakeLists.txt
 │   ├── fetch_test_yuv.bat        生成 165MB 的 YUV 素材（该文件不入库）
 │   └── test_1280x720.flv         参考素材（2MB，用于生成 YUV）
 │
 └── 08-03-muxing_flv/             封装：H.264 + AAC → flv / mp4
     ├── main.cpp                  ★ 学习重点（知识点 1~24）
-    ├── main.c.legacy-c-version.bak
-    └── CMakeLists.txt  *.pro
+    └── CMakeLists.txt
 ```
+
+> 仓库只保留 **C++ 源码 + CMake 配置 + 文档 + 小体积测试素材**。
+> 早期版本里的 qmake `.pro` 文件和原始 C 版本（`*.bak`）已全部移除。
 
 ---
 
@@ -96,8 +97,6 @@ FFmpegTrainCode/
 
 以 08-01 为例，另外两个只改目录名和 exe 名。
 
-### CMake（推荐）
-
 ```powershell
 cd 08-01-encode_audio
 
@@ -115,17 +114,8 @@ FFmpeg 路径默认 `C:/Program Files/ffmpeg/ffmpeg8.1`，可用
 > **构建后无需配置 PATH**：CMake 的 POST_BUILD 会把 7 个 FFmpeg DLL
 > 自动拷到 exe 同目录（约 240MB，所以这些 DLL 不会进仓库）。
 
-### qmake（备选）
-
-```powershell
-cd 08-01-encode_audio
-$env:PATH = "C:\Qt\6.11.0\mingw_64\bin;C:\Qt\Tools\mingw1310_64\bin;" + $env:PATH
-qmake 08-01-encode_audio.pro
-mingw32-make
-```
-
-qmake 产物在 `release/`，该目录下没有 DLL，运行前需要把
-`ffmpeg8.1\bin` 加进 PATH。
+> 用 Qt Creator 打开时直接选「Open Project」→ 选 `CMakeLists.txt`，
+> kit 选 Qt 6.11.0 MinGW 64-bit 即可（工程不链接 Qt 库，kit 只提供工具链）。
 
 ---
 
@@ -241,7 +231,7 @@ ffmpeg -v error -i out.flv -f null -
 | 2 | `av_image_fill_arrays` 后立即 `free(buf)` | **进程崩溃 0xC0000005** | 该函数会改写 `frame->data[]` 指向；要拷进 frame 自己的缓冲区 |
 | 3 | 写完包再读 `pkt` 字段 | 显示 `size=0 pts=NOPTS`，误以为写了空包 | `av_interleaved_write_frame` 成功后会把 pkt **清零**，要打印的字段必须提前存下来 |
 | 4 | 冲刷后再 `send` 非空帧 | `avcodec_send_frame 失败: End of file` | 用 `flushed` 标志记住状态 |
-| 5 | 在 `.pro` 里写 `-Wl,-rpath,<含空格路径>` | `ld: cannot find Files/ffmpeg/...` | MinGW 对 DLL 不支持 rpath，改用 POST_BUILD 拷 DLL |
+| 5 | 链接时写 `-Wl,-rpath,<含空格路径>` | `ld: cannot find Files/ffmpeg/...` | MinGW 对 DLL 不支持 rpath，改用 POST_BUILD 拷 DLL |
 | 6 | `goto cleanup` | C++ 编译报错：jump crosses initialization | 改成立即执行 lambda + `return` |
 | 7 | `av_ts2str` 宏 | C++ 报 `taking address of temporary array` | 直接调 `av_ts_make_string(buf, ts)` |
 | 8 | `const_cast<const uint8_t**>(p)` | 编译报错（`T*` 不能转 `const T**`） | 用 `const uint8_t* inData[1] = {p};` 数组退化 |
@@ -250,22 +240,13 @@ ffmpeg -v error -i out.flv -f null -
 
 ---
 
-## 关于 `*.legacy-c-version.bak`
-
-三个工程的原始版本都是 C 语言（来自 Liao Qingfu 的 FFmpeg 教程，`08-03` 更早源自
-FFmpeg 官方 `doc/examples/muxing.c`）。转换到 C++17 时保留了原始文件作为对照：
-
-- `08-01` 的 C 版本 → C++ 版本**输出逐字节完全一致**（MD5 相同），
-  说明转换是纯语法/风格迁移，没有改变行为。
-- 对照着看可以清楚知道「C++ 到底改了什么、为什么这么改」，
-  这也是「C → C++ 迁移」这份技能的证据。
-
-不需要时可以直接删除，不影响构建（`.pro` 和 `CMakeLists.txt` 都只引用 `main.cpp`）。
-
----
-
 ## 许可证与来源
 
 - `08-01` / `08-02` 原始 C 版本来自 **Liao Qingfu** 的 FFmpeg 音视频教程
 - `08-03` 原始 C 版本源自 FFmpeg 官方示例 `doc/examples/muxing.c`
 - C++17 改写、注释、文档、构建脚本：本仓库
+
+> 早期版本曾保留原始 C 源码（`main.c.legacy-c-version.bak`）作为「C → C++ 迁移」
+> 的对照证据，现已移除，仓库只保留 C++ 实现。
+> 迁移过程中 `08-01` 的 C++ 版输出与 C 版**逐字节完全一致**（MD5 相同），
+> 说明转换是纯语法/风格迁移，没有改变行为。
