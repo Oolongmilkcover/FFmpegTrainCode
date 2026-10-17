@@ -1,0 +1,38 @@
+# =============================================================================
+#  .gitattributes
+#
+#  统一换行符，避免 Windows 开发者和 Linux/GitHub 之间来回转换把整个文件
+#  的 diff 搞成「全文都改了」。
+# =============================================================================
+
+# 自动把文本文件的换行规范化成 LF 存进仓库，检出时按平台转换
+* text=auto
+
+# 源码与文档：明确按文本处理
+*.c       text
+*.cpp     text
+*.h       text
+*.hpp     text
+*.txt     text
+*.md      text
+*.pro     text
+*.pri     text
+*.cmake   text
+CMakeLists.txt text
+*.bat     text
+*.sh      text
+
+# 二进制素材：不要做任何换行符/编码转换，也不要尝试 diff
+*.pcm     binary
+*.yuv     binary
+*.aac     binary
+*.flv     binary
+*.mp4     binary
+*.h264    binary
+*.dll     binary
+*.lib     binary
+*.def     binary
+*.bak     binary
+
+# Windows 批处理脚本保留 CRLF，否则在 cmd 里可能出问题
+*.bat     text eol=crlf

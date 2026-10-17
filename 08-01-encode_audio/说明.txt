@@ -1,0 +1,62 @@
+
+本文件是原工程的说明笔记（FFmpeg 4.2.1 时代）。核心结论在 FFmpeg 8.1 上实测依然成立，
+因此保留原文：
+
+---------------------------------------------------------------------------
+ffmpeg默认的aac编码器，默认编译出来的每帧数据都不带adts，
+但lib_fdk aac默认是带了adts header，而且此时codec_ctx->flags的值都为0.
+这样我们没法判断是否需要自己额外写入adts，因此我们在设置编码的时候可以直接
+将codec_ctx->flags = AV_CODEC_FLAG_GLOBAL_HEADER;  大家都不带adts
+---------------------------------------------------------------------------
+
+这个 flag 的完整语义与实测验证，见「音频编码知识点详解.md」第 8.6 节。
+
+=======================================================================
+关于本目录的代码该看哪里
+=======================================================================
+
+main.c
+    源码，注释里用「【知识点 N】」编号，按编码流程的先后顺序展开：
+      知识点 1   音频编码的数据流全景（PCM → Frame → Packet）
+      知识点 2   编码器能力查询（采样格式 / 采样率 / 声道布局）
+      知识点 2.1 AVChannelLayout 结构体与三条铁律
+      知识点 3   ADTS 头逐位解析
+      知识点 4   send/receive 编码循环的六条规则
+      知识点 5   AV_CODEC_FLAG_GLOBAL_HEADER 的准确语义
+      知识点 6   packed ↔ planar 内存排布
+      知识点 7   libswresample 的用法与三个坑
+      知识点 8~16 查找编码器 / 分配上下文 / 设参数 / 查能力 / open
+      知识点 17  AVPacket
+      知识点 18~21 AVFrame 三要素 / get_buffer / linesize
+      知识点 22  PTS 时间戳与 priming 帧
+      知识点 23  尾帧处理
+      知识点 24  av_frame_make_writable
+      知识点 25  av_samples_fill_arrays
+      知识点 26  冲刷（flush）
+      知识点 27  释放顺序与二级指针惯例
+
+音频编码知识点详解.md
+    与上面编号一一对应的系统性文字讲解，包含参数速查表和踩坑清单。
+    如果只想看一份材料，看这个。
+
+build/
+    CMake 构建产物。FFmpeg 的 7 个 DLL 已由 POST_BUILD 自动拷进来，
+    所以不需要改 PATH 就能直接运行。
+
+=======================================================================
+构建与运行
+=======================================================================
+
+CMake（推荐）：
+    cmake -S . -B build -G "MinGW Makefiles" ^
+          -DCMAKE_C_COMPILER=C:/Qt/Tools/mingw1310_64/bin/gcc.exe ^
+          -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/mingw1310_64/bin/mingw32-make.exe
+    cmake --build build
+    build\encode_audio.exe 48000_2_f32le.pcm out.aac
+
+qmake（备选）：
+    "C:\Qt\6.11.0\mingw_64\bin\qmake.exe" 08-01-encode_audio.pro
+    "C:\Qt\Tools\mingw1310_64\bin\mingw32-make.exe"
+    # release\ 下没有 DLL，需要先把 ffmpeg8.1\bin 加进 PATH
+
+两种方式产出的 .aac 文件经 MD5 比对完全一致。
