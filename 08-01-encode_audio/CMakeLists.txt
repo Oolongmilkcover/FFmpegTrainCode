@@ -92,6 +92,32 @@ endif()
 
 target_link_libraries(encode_audio PRIVATE ffmpeg_deps)
 
+# -----------------------------------------------------------------------------
+# 静态链接 MinGW 运行时（libstdc++ / libgcc）+ 拷贝 libwinpthread
+#
+# 为什么要做（08-04 实测踩到的坑，这里一并预防）：
+#   exe 默认动态依赖 libstdc++-6.dll / libgcc_s_seh-1.dll，运行时由系统按 PATH
+#   顺序查找。如果机器上还装着别的 MinGW（例如 C:\mingw64，GCC 15、win32
+#   线程模型），而它排在 PATH 前面，就会加载到**版本不匹配**的运行时，
+#   程序一行代码都没执行就退出，退出码 0xC0000139
+#   （STATUS_ENTRYPOINT_NOT_FOUND）。
+#
+# 静态链接之后，exe 只依赖 FFmpeg 的 DLL（那些由下面的 POST_BUILD 拷到同目录）
+# 和 libwinpthread-1.dll（一并拷过来），彻底不受 PATH 顺序影响。
+# -----------------------------------------------------------------------------
+if(MINGW)
+    target_link_options(encode_audio PRIVATE -static-libgcc -static-libstdc++)
+
+    get_filename_component(_mingw_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    if(EXISTS "${_mingw_bin_dir}/libwinpthread-1.dll")
+        add_custom_command(TARGET encode_audio POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${_mingw_bin_dir}/libwinpthread-1.dll"
+                    "$<TARGET_FILE_DIR:encode_audio>"
+            COMMENT "拷贝 libwinpthread-1.dll（MinGW 运行时，避免版本冲突）")
+    endif()
+endif()
+
 if(UNIX AND NOT APPLE)
     find_package(Threads REQUIRED)
     target_link_libraries(encode_audio PRIVATE Threads::Threads)

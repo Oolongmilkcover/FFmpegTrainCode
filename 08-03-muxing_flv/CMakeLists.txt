@@ -69,6 +69,23 @@ endif()
 
 target_link_libraries(muxing_flv PRIVATE ffmpeg_deps)
 
+# -----------------------------------------------------------------------------
+# 静态链接 MinGW 运行时 + 拷贝 libwinpthread（避免 PATH 上别的 MinGW 撞版本，
+# 表现为启动即退出 0xC0000139）。说明详见 08-01 的同名段落。
+# -----------------------------------------------------------------------------
+if(MINGW)
+    target_link_options(muxing_flv PRIVATE -static-libgcc -static-libstdc++)
+
+    get_filename_component(_mingw_bin_dir "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    if(EXISTS "${_mingw_bin_dir}/libwinpthread-1.dll")
+        add_custom_command(TARGET muxing_flv POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${_mingw_bin_dir}/libwinpthread-1.dll"
+                    "$<TARGET_FILE_DIR:muxing_flv>"
+            COMMENT "拷贝 libwinpthread-1.dll（MinGW 运行时，避免版本冲突）")
+    endif()
+endif()
+
 if(UNIX AND NOT APPLE)
     find_package(Threads REQUIRED)
     target_link_libraries(muxing_flv PRIVATE Threads::Threads)

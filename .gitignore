@@ -54,6 +54,10 @@ compile_commands.json
 # 08-02 的裸 YUV 素材：165MB，超过 GitHub 单文件 100MB 硬限制
 *.yuv
 
+# 08-04 的裸 PCM 素材：由 sound_in_sync_test.mp4 生成，交给 fetch_test_media.bat
+# （不忽略 08-01 的 PCM —— 那里没有源文件，必须随仓库提交）
+08-04-mp4muxer/*.pcm
+
 # 编码/封装的输出物
 *.h264
 *.h265
@@ -66,6 +70,10 @@ compile_commands.json
 # 覆盖上面 *.flv 的例外：这个参考 FLV 只有 2MB，
 # 是用来生成 YUV 素材的原始文件，属于「必要输入」，必须提交。
 !08-02-encode_video/test_1280x720.flv
+
+# 覆盖上面 *.mp4 的例外：08-04 的参考素材只有 132KB，
+# 是生成 YUV/PCM 素材的原始文件，属于「必要输入」，必须提交。
+!08-04-mp4muxer/sound_in_sync_test.mp4
 
 # ---------------------------------------------------------------------------
 # 旧版 FFmpeg 4.2.1 SDK
