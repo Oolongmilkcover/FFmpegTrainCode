@@ -152,7 +152,6 @@ endif()
 # =============================================================================
 # 配置 + 构建（MinGW 13.1，Qt 6.11 自带的那套）：
 #   cmake -S . -B build -G "MinGW Makefiles" ^
-#         -DCMAKE_C_COMPILER=C:/Qt/Tools/mingw1310_64/bin/gcc.exe ^
 #         -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/mingw1310_64/bin/mingw32-make.exe
 #   cmake --build build
 #

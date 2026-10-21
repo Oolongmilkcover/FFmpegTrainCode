@@ -9,8 +9,8 @@ FFmpeg 音视频编码 / 封装的**渐进式学习代码**，面向「采集 �
 - 调用**顺序**为什么不能颠倒
 - 返回值怎么判，**哪些返回值是「正常」而不是错误**
 
-四个工程共用一套 C++17 风格（源码 + CMake），可以直接作为简历项目里
-`encoder` / `muxer` 层的基础。
+五个工程共用一套 C++17 风格（源码 + CMake），可以直接作为简历项目里
+`encoder` / `muxer` / `pusher` 层的基础。**前四个不用任何硬件，第五个有合成源也不用。**
 
 | 工程 | 一句话 |
 | --- | --- |
@@ -18,6 +18,7 @@ FFmpeg 音视频编码 / 封装的**渐进式学习代码**，面向「采集 �
 | `08-02-encode_video` | 裸 YUV → H.264，讲透视频参数与时间基 |
 | `08-03-muxing_flv` | 合成音视频 → flv/mp4，讲透容器与交织 |
 | `08-04-mp4muxer` | YUV + PCM → MP4，讲透**音视频同步**与模块化分层 |
+| `08-05-capture_push` | 摄像头/麦克风 → 编码 → **落盘或 RTMP 推流**，讲透队列/多线程/重连 |
 
 ---
 
@@ -61,40 +62,56 @@ FFmpegTrainCode/
 │   ├── main.cpp                    ★ 学习重点（知识点 1~24）
 │   └── CMakeLists.txt
 │
-└── 08-04-mp4muxer/                 ★ 同步封装：YUV + PCM → H.264 + AAC → MP4
-    ├── main.cpp                    串联 + 音视频交织调度（知识点 16~19）
-    ├── videoencoder.{h,cpp}        知识点 2~5
-    ├── audioencoder.{h,cpp}        知识点 6~7
-    ├── audioresampler.{h,cpp}      知识点 8~9
-    ├── muxer.{h,cpp}               知识点 10~15
+├── 08-04-mp4muxer/                 ★ 同步封装：YUV + PCM → H.264 + AAC → MP4
+│   ├── main.cpp                    串联 + 音视频交织调度（知识点 16~19）
+│   ├── videoencoder.{h,cpp}        知识点 2~5
+│   ├── audioencoder.{h,cpp}        知识点 6~7
+│   ├── audioresampler.{h,cpp}      知识点 8~9
+│   ├── muxer.{h,cpp}               知识点 10~15
+│   ├── CMakeLists.txt
+│   ├── 音视频同步封装知识点详解.md
+│   ├── fetch_test_media.bat        生成 YUV + PCM 素材（不入库）
+│   └── sound_in_sync_test.mp4      参考素材（132KB，用于生成素材）
+│
+└── 08-05-capture_push/             ★ 采集推流：摄像头/麦克风 → 编码 → 落盘 / RTMP
+    ├── main.cpp                    命令行 + 运行时长 + 退出码（知识点 32）
+    ├── pusher.{h,cpp}              编排：4 线程 / 2 队列 / 重连（知识点 22~31）
+    ├── capture.{h,cpp}             采集源：设备 + 合成（知识点 3~8、33~37）
+    ├── encoder.{h,cpp}             x264 / AAC（知识点 9~16）
+    ├── muxer.{h,cpp}               文件 / RTMP 输出（知识点 17~21、38）
+    ├── dropqueue.h                 有界队列（知识点 1~2）
     ├── CMakeLists.txt
-    ├── 音视频同步封装知识点详解.md
-    ├── fetch_test_media.bat        生成 YUV + PCM 素材（不入库）
-    └── sound_in_sync_test.mp4      参考素材（132KB，用于生成素材）
+    └── 采集推流知识点详解.md
 ```
 
 > 仓库只保留 **C++ 源码 + CMake 配置 + 文档 + 小体积测试素材**。
 > 早期版本里的 qmake `.pro` 文件和原始 C 版本（`*.bak`）已全部移除。
+> 08-05 不需要任何测试素材：没有摄像头/麦克风时用内置合成源即可跑通全链路。
 
 ---
 
-## 四个工程的关系
+## 五个工程的关系
 
 ```
-                      08-01             08-02              08-03            08-04
-                    音频编码           视频编码            封装          同步封装
-                    ────────          ────────          ────────        ─────────
-  输入          裸 PCM (f32le)      裸 YUV (yuv420p)   YUV + PCM       YUV + PCM
-      │              │                  │                  │               │
-      ▼              ▼                  ▼                  ▼               ▼
-   学到什么      音频参数四要素      视频参数 + 时间基   容器/交织/       两路时间轴如何
-                packed↔planar        pts = 帧号         GLOBAL_HEADER    统一与调度
-                frame_size=1024      GOP/B帧/lookahead  trailer(moov)    模块化分层
+                      08-01             08-02              08-03            08-04            08-05
+                    音频编码           视频编码            封装          同步封装         采集推流
+                    ────────          ────────          ────────        ─────────        ────────
+  输入          裸 PCM (f32le)      裸 YUV (yuv420p)   YUV + PCM       YUV + PCM      摄像头/麦克风
+  数据源        文件               文件               文件            文件             ★实时源
+      │              │                  │                  │               │               │
+      ▼              ▼                  ▼                  ▼               ▼               ▼
+  学到什么      音频参数四要素      视频参数 + 时间基   容器/交织/      两路时间轴如何   队列/背压/
+                packed↔planar        pts = 帧号         GLOBAL_HEADER   统一与调度      多线程/重连
+                frame_size=1024      GOP/B帧/lookahead  trailer(moov)   模块化分层      设备协商/节流
 ```
 
-08-04 是把 08-01 + 08-02 + 08-03 的知识**组装成一个完整的转封装程序**，
-并额外回答一个问题：**音视频两条时间轴怎么对上（同步）**。
-它还示范了工程化写法：编码器/重采样/封装各自成类，`main` 只负责调度。
+**学习路径是"编码 → 封装 → 同步 → 实时"：**
+
+- 08-01 / 08-02：单个编码器的参数与时间基
+- 08-03：容器怎么把两路流装进去（交织、trailer）
+- 08-04：两条时间轴怎么对上（同步），并开始分层
+- **08-05：数据源从文件换成设备后，多出来的那一整类问题**
+  （队列与背压、多线程解耦、阻塞读的中断、断线重连）
 
 **为什么先学编码再学封装？** 因为封装里的每个坑都和编码参数直接相关：
 
@@ -106,18 +123,19 @@ FFmpegTrainCode/
 | 编码器有延迟，要 flush | x264 的 look-ahead + 帧级多线程 |
 | 新观众黑屏 | `gop_size` 决定关键帧间隔 |
 | 音视频不同步 | 两路 pts 各自的累加方式与换算 |
+| 断线重连后花屏 | `gop_size`（要等下一个 I 帧） |
+| 采集跟不上导致丢帧 | 编码耗时 + 队列容量 |
 
 ---
 
 ## 构建
 
-以 08-01 为例，另外三个只改目录名和 exe 名。
+以 08-01 为例，另外四个只改目录名和 exe 名。
 
 ```powershell
 cd 08-01-encode_audio
 
 cmake -S . -B build -G "MinGW Makefiles" `
-      -DCMAKE_C_COMPILER=C:/Qt/Tools/mingw1310_64/bin/gcc.exe `
       -DCMAKE_CXX_COMPILER=C:/Qt/Tools/mingw1310_64/bin/g++.exe `
       -DCMAKE_MAKE_PROGRAM=C:/Qt/Tools/mingw1310_64/bin/mingw32-make.exe
 
@@ -213,6 +231,40 @@ cd 08-04-mp4muxer
 2. **交织调度过程**：`apts:xx vpts:yy → 处理视频/音频`
 3. **结尾汇总**：两路时间轴长度 + 差值（应小于 1 帧）
 
+### 08-05 采集推流（摄像头/麦克风 → 落盘 / RTMP）
+
+```powershell
+cd 08-05-capture_push
+
+# 1) 不需要任何硬件：先用合成源把整条链路跑通
+.\build\capture_push.exe --synthetic-video --synthetic-audio --output out.mp4 --duration 5
+
+# 2) 查设备名（本程序不打印日志，用 ffmpeg 查）
+ffmpeg -list_devices true -f dshow -i dummy
+
+# 3) 真实摄像头 + 麦克风 → mp4
+.\build\capture_push.exe --video "video=AMD Privacy View camera" `
+                         --audio "audio=Microphone (High Definition Audio Device)" `
+                         --output av.mp4 --duration 5
+
+# 4) 推到本地 RTMP（先起 SRS / nginx-rtmp / 或 ffmpeg -listen 1）
+.\build\capture_push.exe --video "video=..." --audio "audio=..." `
+                         --output rtmp://127.0.0.1/live/demo --duration 30
+```
+
+**这个工程刻意不输出任何日志**（见 `main.cpp` 文件头的说明）。
+判断成败看**退出码**：
+
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 正常结束 |
+| 1 | 命令行参数错误 |
+| 2 | 视频采集源打开失败（设备名错 / 被占用 / 没插） |
+| 3 | 视频编码器打开失败（这份 FFmpeg 没编进 libx264？） |
+| 4 | 输出打开失败（路径不可写 / 推流地址连不上） |
+
+`--help` 有全部参数（视频源、音频源、编码旋钮、运行控制）。
+
 ---
 
 ## 测试素材
@@ -227,6 +279,9 @@ cd 08-04-mp4muxer
 | `08-04/sound_in_sync_test.mp4` | 132 KB | ✅ 是 | 参考素材（720×576 / 25fps / 44.1kHz / 40s） |
 | `08-04/720x576_yuv420p.yuv` | **74 MB** | ❌ 否 | 由上面那个 mp4 生成（前 5 秒），用 `fetch_test_media.bat` |
 | `08-04/44100_2_s16le.pcm` | 0.84 MB | ❌ 否 | 同上，也由脚本生成 |
+
+> **08-05 不需要测试素材**：没有摄像头/麦克风就用 `--synthetic-video --synthetic-audio`
+> （内置画面 + 440Hz 正弦波），整条链路照样跑通。
 
 如果 08-01 的 PCM 素材丢了，也可以用 ffmpeg 重新生成：
 
@@ -258,6 +313,23 @@ ffprobe -show_packets out.flv               # 看包的时间戳和交织顺序�
 ffmpeg -v error -i out.flv -f null -
 ```
 
+08-05 是静默运行的程序，产物验证就更重要了：
+
+```bash
+# 落盘：结构 + 时长 + 能否解码
+ffprobe -show_format -show_streams av.mp4
+ffmpeg -v error -i av.mp4 -f null -
+
+# 确认真的采到了声音（不是静音轨）
+ffmpeg -v error -i av.mp4 -af volumedetect -f null -      # 看 mean_volume
+
+# 确认真的采到了画面（抠一帧出来看）
+ffmpeg -v error -i av.mp4 -vf "select=eq(n\,30)" -frames:v 1 frame30.png
+
+# 推流：本地起一个只接一次的接收端，看能不能收到
+ffmpeg -listen 1 -i rtmp://127.0.0.1:19354/live/demo -c copy -y recv.flv
+```
+
 ---
 
 ## 这份代码里踩到并修掉的真实坑
@@ -281,11 +353,23 @@ ffmpeg -v error -i out.flv -f null -
 | 13 | `avformat_close_input` 关**输出**上下文 | 未定义行为、句柄泄漏 | `avio_closep` + `avformat_free_context` |
 | 14 | 写完 trailer 立刻查文件大小 | 读到 0 字节 | 先 `avio_closep`（或显式 DeInit）再查 |
 | 15 | `.bat` 里写 UTF-8 中文 | cmd 按 GBK 解析，命令全乱 | 批处理文件保持纯 ASCII |
+| 16 | 合成源不节流 | 跑 5 秒生成 2895 帧、容器 375 秒 | 采集层按 fps/采样数节流（`sleepUntil`） |
+| 17 | 节流基准记在 `open()` 里 | 跑 4 秒出 5 秒视频（开头 30 帧被瞬间放出） | 改成首帧**惰性**记录起点 |
+| 18 | 虚拟摄像头不等帧率 | 4.4 秒拿到 1630 帧（≈370fps） | 帧率限制要加在**采集层**，不能只加在合成源 |
+| 19 | dshow 音频默认 500ms 一块 | 音频比视频长 0.48 秒、延迟 ≥0.5 秒 | 传 `audio_buffer_size=100`（毫秒） |
+| 20 | `rtmp://` 靠扩展名猜格式 | `avformat_alloc_output_context2` 返回 **-22 (EINVAL)**，推流根本起不来 | 按协议头映射到 `flv`（`effectiveFormat`） |
+| 21 | 编码器写死 `stream_index` | 只采音频时写包失败（音频是 0 号流，包却标 1） | 由编排层按实际流数分配，在 sink 里写 |
+| 22 | 端口探测打断 RTMP 握手 | `ffmpeg -listen 1` 只接一次连接，探测把它用掉了 | 验证推流时**别**去连那个端口 |
+| 23 | 重连后立刻写 P 帧 | 画面花屏/解不出 | 等下一个关键帧（`AV_PKT_FLAG_KEY`）再写 |
 
 > 第 11 条是 08-04 改造里最花时间的问题：`C:\mingw64`（GCC 15.2 / win32 线程）
 > 在 PATH 里排在 Qt 的 MinGW 13.1（posix 线程）之前，导致 exe 加载到不匹配的
 > `libstdc++-6.dll`。完整排查过程见
 > [08-04 的文档](08-04-mp4muxer/音视频同步封装知识点详解.md) §9.1。
+>
+> 第 16~20 条都是 08-05 实测撞出来的（每一处都有前后对比数据），
+> 完整排查过程见
+> [08-05 的文档](08-05-capture_push/采集推流知识点详解.md) §3.6~§5.1。
 
 ---
 
@@ -293,6 +377,8 @@ ffmpeg -v error -i out.flv -f null -
 
 - `08-01` / `08-02` / `08-04` 原始版本来自 **Liao Qingfu** 的 FFmpeg 音视频教程
 - `08-03` 原始版本源自 FFmpeg 官方示例 `doc/examples/muxing.c`
+- `08-05` 的 pusher 模块参考 `QtFFmpegPlayer/Player/QtPlayer/pusher/`，
+  本仓库做了简化（去掉日志与实验脚手架）并修掉 7 处实测问题
 - C++17 改写、FFmpeg 8.1 适配、注释、文档、CMake 构建：本仓库
 
 > 早期版本曾保留原始 C 源码（`main.c.legacy-c-version.bak`）作为「C → C++ 迁移」
