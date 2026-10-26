@@ -135,9 +135,22 @@ public:
         close();
 
         /*
-         * 注册所有输入设备。FFmpeg 5.0 之后它会自动注册，但显式调用无害，
-         * 而且能避免"换了构建后突然找不到 dshow"这类问题。
-         */
+         * 【知识点 40】avdevice_register_all() 必须调 —— 实测，不是"建议调"
+         * ---------------------------------------------------------------------------
+         * 常见的误解是"FFmpeg 5.0 之后设备也会自动注册"。
+         * 我在 FFmpeg 8.1 (Windows) 上做了对照实验：
+         *
+         *     调用      → dshow 摄像头正常打开
+         *     注释掉    → av_find_input_format("dshow") 返回 NULL，采集源打开失败
+         *                 （本程序表现为退出码 2）
+         *
+         * 所以对**输入设备**来说，这一步不能省：它把编译期生成的设备表
+         * （indev_list / outdev_list）注册进 FFmpeg 的格式列表，
+         * 之后 av_find_input_format 才找得到 dshow / v4l2 / alsa。
+         *
+         * 它和已被删除的 av_register_all() 不是一回事：后者是注册 muxer/demuxer，
+         * 现在那些由构建期自动完成；设备这一份仍然要显式注册。
+         * --------------------------------------------------------------------------- */
         avdevice_register_all();
 
         m_fmt = avformat_alloc_context();

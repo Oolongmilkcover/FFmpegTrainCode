@@ -402,16 +402,36 @@ void Pusher::pushLoop()
             }
         }
 
-        /* 重连之后要等关键帧（见【知识点 30】）。
-         * 只对视频判断：音频没有"关键帧"的概念。 */
-        if (m_waitingKeyframe.load() && (pkt->flags & AV_PKT_FLAG_KEY) == 0) {
-            av_packet_free(&pkt);
-            continue;
+        /* 【知识点 30】重连之后要等**视频**关键帧
+         * ---------------------------------------------------------------------------
+         * 为什么要等：断线时丢掉的可能是 P 帧，接上之后直接写 P 帧，
+         * 解码器没有参考帧可用 → 花屏甚至解不出来。
+         *
+         * ⚠ 为什么必须同时判断 stream_index（实测踩到的坑）：
+         *   AAC **每一个包都带 AV_PKT_FLAG_KEY**（无帧间预测，每帧都独立可解），
+         *   实测 96/96 全是 K。所以只判断 flags 的话，重连后第一个音频包
+         *   就会把"等关键帧"的状态清掉 —— 门一开，接着写进去的正是 P 帧，
+         *   花屏照旧。
+         *
+         * 所以判据必须是"**视频流**的**关键帧**"，两个条件缺一不可。
+         * 等待期间音频包也一起丢：如果只放音频过去，等关键帧的几百毫秒里
+         * 音频已经跑了很远，接上视频就会音画错位。
+         * --------------------------------------------------------------------------- */
+        if (m_waitingKeyframe.load()) {
+            const bool isVideoKey =
+                m_videoStreamIndex >= 0 &&
+                pkt->stream_index == m_videoStreamIndex &&
+                (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+
+            if (!isVideoKey) {
+                av_packet_free(&pkt);     // 音频包 / 视频 P 帧：都丢掉，继续等
+                continue;
+            }
+            m_waitingKeyframe.store(false);   // 真正的视频关键帧到了，开门
         }
-        if (m_waitingKeyframe.load()) m_waitingKeyframe.store(false);
 
         if (!m_muxer->writePacket(pkt)) {
-            // 写失败一般是连接坏了：标记需要重连，把这个包也已经由 muxer 释放
+            // 写失败一般是连接坏了：标记需要重连（包已由 muxer 释放）
             m_outputReady = false;
             if (!m_running.load()) break;    // 是"停止"导致的失败，不是掉线
         }
@@ -422,10 +442,14 @@ void Pusher::pushLoop()
      * av_write_trailer 会 flush muxer 缓冲，并写 mp4 的 moov（每帧位置/大小的索引表）。
      * 不写的话文件基本无法播放、无法 seek。
      * muxer 内部会先清掉"叫停标志"再写，保证这最后一步不会被打断。
+     *
+     * 注意这里**不看 m_outputReady**：那个标志表示"当前还能继续写包"，
+     * 而收尾时它可能因为"最后一个包写失败"（比如 stop() 刚把 I/O 叫停）变成 false。
+     * 只要 header 曾经写成功过，就应该尝试写 trailer —— 这个判断交给 muxer 自己做
+     * （它内部检查 m_out / m_wroteHeader / m_wroteTrailer）。
+     * 反过来，如果一开始就没打开过输出，m_out 是空，这里调用也是安全的空操作。
      * --------------------------------------------------------------------------- */
-    if (m_outputReady) {
-        m_muxer->writeTrailer();
-    }
+    m_muxer->writeTrailer();
     m_muxer->close();
     m_outputReady = false;
 }
