@@ -75,7 +75,6 @@ public:
 
     virtual void writeTrailer() = 0;
 
-    virtual bool isOpen() const = 0;
     virtual void close() = 0;
 };
 

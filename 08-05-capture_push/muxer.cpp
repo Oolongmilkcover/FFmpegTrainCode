@@ -93,7 +93,6 @@ public:
             if (ret < 0) { close(); return false; }
         }
 
-        m_opened = true;
         return true;
     }
 
@@ -173,7 +172,8 @@ public:
         av_packet_free(&pkt);
 
         if (ret < 0) {
-            m_broken = true;      // 一般是网络坏了，让上层去重连
+            /* 一般是网络坏了。这里只把失败告诉调用方，由它决定重连 ——
+             * muxer 不该自己判断"是不是该重连"（那是编排层的策略）。 */
             return false;
         }
         return true;
@@ -196,8 +196,6 @@ public:
         m_wroteTrailer = true;
     }
 
-    bool isOpen() const override { return m_out && m_opened && m_wroteHeader && !m_broken; }
-
     void close() override
     {
         if (m_out) {
@@ -211,10 +209,8 @@ public:
             m_out = nullptr;
         }
         m_inTimeBases.clear();
-        m_opened       = false;
         m_wroteHeader  = false;
         m_wroteTrailer = false;
-        m_broken       = false;
         m_abortFlag    = nullptr;
     }
 
@@ -222,10 +218,8 @@ private:
     AVFormatContext*  m_out = nullptr;
     std::vector<AVRational> m_inTimeBases;   // 每路流"输入侧"的时间基
     std::atomic<bool>* m_abortFlag = nullptr; // 借用，不拥有
-    bool m_opened       = false;
     bool m_wroteHeader  = false;
     bool m_wroteTrailer = false;
-    bool m_broken       = false;
 };
 
 } // namespace

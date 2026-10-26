@@ -496,20 +496,12 @@ public:
         m_fps    = cfg.fps    > 0 ? cfg.fps    : 30;
         m_frameIndex = 0;
 
-        m_frame = av_frame_alloc();
-        if (!m_frame) return false;
-        m_frame->format = AV_PIX_FMT_YUV420P;
-        m_frame->width  = m_width;
-        m_frame->height = m_height;
-        if (av_frame_get_buffer(m_frame, 32) < 0) return false;
-
         m_startUs = 0;   // 惰性记录（见 lazyStartUs）
         return true;
     }
 
     void close() override
     {
-        if (m_frame) av_frame_free(&m_frame);
         m_width = m_height = 0;
     }
 
@@ -517,7 +509,7 @@ public:
 
     AVFrame* readFrame() override
     {
-        if (!m_frame) return nullptr;
+        if (m_width <= 0 || m_height <= 0) return nullptr;   // 还没 open
 
         /* 实时节流：睡到"这一帧本该出现的时刻"（见 sleepUntil 的说明）。
          * 这一步让合成源的行为和真实摄像头一致 —— 每次 readFrame 大约间隔 1/fps 秒。 */
@@ -525,7 +517,17 @@ public:
         const int64_t startUs = lazyStartUs(m_startUs);
         if (!sleepUntil(due, startUs, m_stop)) return nullptr;   // 被叫停
 
-        // 每帧重新分配一份返回给调用方（调用方负责释放），内部帧复用
+        /* 【知识点 39】为什么每帧新分配一个 AVFrame，而不是复用一个成员 buffer
+         * ---------------------------------------------------------------------------
+         * 因为返回的帧会**离开这个函数**：它被 push 进帧队列，可能过几十毫秒
+         * 才被编码线程取走。如果复用同一块 buffer，下一次 readFrame 往里一画，
+         * 队列里那个还没被编码的帧就跟着变了 —— 编码器拿到的是"半新半旧"的画面，
+         * 表现为撕裂 / 乱帧。这类 bug 还很难查：它只在"编码比采集慢"时出现。
+         *
+         * 所以每帧 av_frame_alloc + av_frame_get_buffer，所有权交给调用方，
+         * 由调用方 av_frame_free。代价是每帧一次 1.3MB（720p）的 alloc/free；
+         * 真要优化就用**帧池**（预分配 N 个，用完归还），而**不是**复用同一个。
+         * --------------------------------------------------------------------------- */
         AVFrame* out = av_frame_alloc();
         if (!out) return nullptr;
         out->format = AV_PIX_FMT_YUV420P;
@@ -585,7 +587,6 @@ private:
         }
     }
 
-    AVFrame* m_frame = nullptr;
     std::atomic<bool> m_stop{ false };
     int     m_width  = 0;
     int     m_height = 0;

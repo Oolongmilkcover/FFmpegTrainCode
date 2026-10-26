@@ -100,9 +100,11 @@ public:
 
         if (m_items.size() >= m_capacity) {
             if (m_dropOldest) {
+                /* 丢掉最旧的，收下新的。
+                 * 想统计"丢了多少"，在这里加一行计数/打印即可 ——
+                 * 本工程不输出日志，所以没有内置计数器（见文档 §8.2）。 */
                 m_deleter(m_items.front());
                 m_items.pop_front();
-                ++m_dropped;
             } else {
                 // wait 的谓词必须同时检查 m_closed：否则 close 之后这里会永远等下去
                 m_cv.wait(lock, [this] { return m_closed || m_items.size() < m_capacity; });
@@ -173,8 +175,7 @@ private:
     size_t                  m_capacity;
     Deleter                 m_deleter;
     bool                    m_dropOldest;
-    bool                    m_closed  = false;
-    uint64_t                m_dropped = 0;
+    bool                    m_closed = false;
 };
 
 #endif // PUSH_DROPQUEUE_H
